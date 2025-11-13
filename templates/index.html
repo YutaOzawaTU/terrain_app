@@ -1,123 +1,388 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>3D Terrain Viewer</title>
+    <title>3D 地形可視化 & STL 生成ツール</title>
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-</head>
-<body>
-<h1>3D 地形可視化 & STL 生成ツール</h1>
 
-<input type="file" id="ncfile">
-<button onclick="upload()">アップロードして表示</button>
+    <style>
+        body {
+            margin: 0;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont,
+                "Segoe UI", sans-serif;
+            background: #f4f5f7;
+            color: #1f2933;
+        }
 
-<br><br>
-Zスケール: <input type="number" id="zscale" value="1" step="0.1">
-<button onclick="updateZ()">更新</button>
+        header {
+            background: #111827;
+            color: #f9fafb;
+            padding: 16px 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
 
-<div id="plot" style="width:100%;height:600px;"></div>
+        header h1 {
+            margin: 0;
+            font-size: 1.4rem;
+            font-weight: 600;
+        }
 
-<button onclick="downloadSTL()">STLをダウンロード</button>
+        header p {
+            margin: 4px 0 0;
+            font-size: 0.85rem;
+            color: #9ca3af;
+        }
 
-<script>
-let LONS, LATS, Z;
-let currentZ = 1;
+        main {
+            max-width: 1200px;
+            margin: 20px auto 40px;
+            padding: 0 16px;
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
 
-function upload() {
-    const file = document.getElementById("ncfile").files[0];
-    const form = new FormData();
-    form.append("ncfile", file);
+        .card {
+            background: #ffffff;
+            border-radius: 16px;
+            padding: 16px 20px;
+            box-shadow: 0 10px 25px rgba(15,23,42,0.08);
+            border: 1px solid #e5e7eb;
+        }
 
-    fetch("/api/upload_nc", { method:"POST", body:form })
-        .then(r => r.json())
-        .then(data => {
-            LONS = data.lons;
-            LATS = data.lats;
-            Z = data.Z;
-            draw();
-        });
-}
+        #controls {
+            flex: 0 0 320px;
+            max-width: 380px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
 
-function draw() {
-    const fig = {
-        data:[{
-            type:"surface",
-            x:LONS,
-            y:LATS,
-            z:Z,
-            colorscale:"Viridis"
-        }],
-        layout:{
-            title:"3D Terrain",
-            scene:{
-                aspectratio:{x:1, y:1, z:currentZ}
+        #viewer {
+            flex: 1 1 400px;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        h2 {
+            font-size: 1rem;
+            margin: 0 0 8px;
+            font-weight: 600;
+            color: #111827;
+        }
+
+        .field {
+            margin-bottom: 10px;
+        }
+
+        .field label {
+            display: block;
+            font-size: 0.85rem;
+            font-weight: 500;
+            margin-bottom: 4px;
+        }
+
+        .hint {
+            font-size: 0.75rem;
+            color: #6b7280;
+            margin-top: 2px;
+        }
+
+        input[type="file"] {
+            display: block;
+            width: 100%;
+            padding: 6px;
+            border-radius: 999px;
+            border: 1px dashed #cbd5e1;
+            background: #f9fafb;
+            font-size: 0.85rem;
+        }
+
+        input[type="number"] {
+            width: 80px;
+            padding: 4px 6px;
+            border-radius: 999px;
+            border: 1px solid #d1d5db;
+            font-size: 0.85rem;
+        }
+
+        button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            border-radius: 999px;
+            border: none;
+            cursor: pointer;
+            font-size: 0.85rem;
+            padding: 8px 14px;
+            font-weight: 500;
+            transition: transform 0.06s ease, box-shadow 0.12s ease,
+                background 0.12s ease;
+        }
+
+        button.primary {
+            background: #2563eb;
+            color: #ffffff;
+            box-shadow: 0 8px 20px rgba(37,99,235,0.35);
+        }
+
+        button.primary:hover {
+            background: #1d4ed8;
+            transform: translateY(-1px);
+            box-shadow: 0 12px 26px rgba(37,99,235,0.45);
+        }
+
+        button.secondary {
+            background: #ffffff;
+            color: #2563eb;
+            border: 1px solid #bfdbfe;
+        }
+
+        button.secondary:hover {
+            background: #eff6ff;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: default;
+            box-shadow: none;
+            transform: none;
+        }
+
+        .button-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        #plot {
+            width: 100%;
+            height: 560px;
+        }
+
+        #status {
+            font-size: 0.8rem;
+            color: #6b7280;
+        }
+
+        #status.ok {
+            color: #15803d;
+        }
+
+        #status.error {
+            color: #b91c1c;
+        }
+
+        @media (max-width: 900px) {
+            main {
+                flex-direction: column;
+            }
+            #controls, #viewer {
+                max-width: 100%;
+                flex: 1 1 auto;
+            }
+            #plot {
+                height: 420px;
             }
         }
-    };
-    Plotly.newPlot("plot", fig);
-}
 
-function updateZ() {
-    currentZ = parseFloat(document.getElementById("zscale").value);
-    draw();
-}
+        footer {
+            width: 100%;
+            padding: 20px 0;
+            text-align: center;
+            border-top: 1px solid #e5e7eb;
+            font-size: 14px;
+            color: #555;
+            background: #f9fafb;
+        }
 
-function downloadSTL() {
-    fetch("/api/export_stl", {
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({
-            lons:LONS,
-            lats:LATS,
-            Z:Z,
-            z_scale:currentZ
-        })
-    }).then(resp => resp.blob())
-      .then(blob => {
-          const url = window.URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = "terrain.stl";
-          a.click();
-          URL.revokeObjectURL(url);
-      });
-}
-</script>
+        footer a {
+            color: #2563eb;
+            text-decoration: none;
+        }
 
-<!-- ========================= -->
-<!--       Footer Section       -->
-<!-- ========================= -->
-<footer style="
-    width: 100%;
-    padding: 20px 0;
-    text-align: center;
-    margin-top: 60px;
-    border-top: 1px solid #ddd;
-    font-size: 14px;
-    color: #555;
-">
+        footer a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+<header>
+    <h1>3D 地形可視化 & STL 生成ツール</h1>
+    <p>GEBCO などの netCDF（.nc）から 3D 地形図と 3Dプリント用 STL を生成します。</p>
+</header>
 
-    <!-- GEBCO 公式リンク -->
-    <div style="margin-bottom: 10px;">
-        標高データ提供: 
-        <a href="https://download.gebco.net" target="_blank" style="color: #0066cc; text-decoration: none;">
-            GEBCO公式サイト
-        </a>
+<main>
+    <!-- 左：操作パネル -->
+    <section id="controls" class="card">
+        <h2>1. データを読み込む</h2>
+        <div class="field">
+            <label for="ncfile">GEBCO 等の netCDF (.nc) ファイル</label>
+            <input type="file" id="ncfile" accept=".nc">
+            <div class="hint">
+                GEBCO 公式サイトからダウンロードした <code>.nc</code> を指定してください。
+            </div>
+        </div>
+
+        <h2>2. Z スケールを調整</h2>
+        <div class="field">
+            <label for="zscale">Z スケール（起伏の強調度）</label>
+            <input type="number" id="zscale" value="1" step="0.1" min="0.1">
+            <button class="secondary" onclick="updateZ()">更新</button>
+            <div class="hint">
+                値を大きくすると起伏が強調されます。可視化だけでなく、STL 生成時にもこの値が反映されます。
+            </div>
+        </div>
+
+        <div class="button-row">
+            <button class="primary" onclick="upload()">アップロードして表示</button>
+            <button class="secondary" onclick="downloadSTL()">STL をダウンロード</button>
+        </div>
+
+        <div class="field">
+            <div id="status">nc ファイルを選択して、3D 表示を開始してください。</div>
+        </div>
+    </section>
+
+    <!-- 右：3Dビュー -->
+    <section id="viewer" class="card">
+        <h2>3D 地形ビュー</h2>
+        <div id="plot"></div>
+    </section>
+</main>
+
+<footer>
+    <div style="margin-bottom: 8px;">
+        標高データ提供:
+        <a href="https://download.gebco.net" target="_blank">GEBCO公式サイト</a>
     </div>
-
-    <!-- 濵田ゼミ SNS（note） -->
-    <div style="margin-bottom: 10px;">
+    <div style="margin-bottom: 8px;">
         濵田ゼミ公式 note:
-        <a href="https://note.com/create_gbm" target="_blank" style="color: #0066cc; text-decoration: none;">
-            https://note.com/create_gbm
-        </a>
+        <a href="https://note.com/create_gbm" target="_blank">https://note.com/create_gbm</a>
     </div>
-
-    <!-- 固定の最終更新日 -->
     <div>
         最終更新日: 2025/11/13
     </div>
 </footer>
 
+<script>
+    let LONS = null;
+    let LATS = null;
+    let Z = null;
+    let currentZ = 1;
+
+    function setStatus(msg, type) {
+        const el = document.getElementById("status");
+        el.textContent = msg;
+        el.classList.remove("ok", "error");
+        if (type === "ok") el.classList.add("ok");
+        if (type === "error") el.classList.add("error");
+    }
+
+    function upload() {
+        const fileInput = document.getElementById("ncfile");
+        const file = fileInput.files[0];
+        if (!file) {
+            alert("まず .nc ファイルを選択してください。");
+            return;
+        }
+
+        const form = new FormData();
+        form.append("ncfile", file);
+
+        setStatus("nc ファイルをアップロードして処理中です…");
+
+        fetch("/api/upload_nc", { method: "POST", body: form })
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) {
+                    console.error(data.error);
+                    setStatus("サーバー側でエラー: " + data.error, "error");
+                    return;
+                }
+                LONS = data.lons;
+                LATS = data.lats;
+                Z = data.Z;
+                draw();
+                setStatus("3D 地形を描画しました。Z スケールを調整してから STL を出力できます。", "ok");
+            })
+            .catch(err => {
+                console.error(err);
+                setStatus("通信中にエラーが発生しました。", "error");
+            });
+    }
+
+    function draw() {
+        if (!LONS || !LATS || !Z) return;
+        const fig = {
+            data: [{
+                type: "surface",
+                x: LONS,
+                y: LATS,
+                z: Z,
+                colorscale: "Viridis"
+            }],
+            layout: {
+                title: "3D Terrain",
+                scene: {
+                    aspectratio: {x: 1, y: 1, z: currentZ},
+                    xaxis: {title: "経度"},
+                    yaxis: {title: "緯度"},
+                    zaxis: {title: "標高 / 水深"}
+                },
+                margin: {l: 0, r: 0, t: 40, b: 0}
+            }
+        };
+        Plotly.newPlot("plot", fig);
+    }
+
+    function updateZ() {
+        const val = parseFloat(document.getElementById("zscale").value);
+        if (!isFinite(val) || val <= 0) {
+            alert("Z スケールには正の数値を入力してください。");
+            return;
+        }
+        currentZ = val;
+        draw();
+        setStatus("Z スケールを " + currentZ + " に更新しました。", "ok");
+    }
+
+    function downloadSTL() {
+        if (!LONS || !LATS || !Z) {
+            alert("先に nc ファイルをアップロードして 3D 表示してください。");
+            return;
+        }
+
+        setStatus("STL を生成しています…");
+
+        fetch("/api/export_stl", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+                lons: LONS,
+                lats: LATS,
+                Z: Z,
+                z_scale: currentZ
+            })
+        })
+            .then(resp => resp.blob())
+            .then(blob => {
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = "terrain.stl";
+                a.click();
+                window.URL.revokeObjectURL(url);
+                setStatus("STL ファイルを生成してダウンロードしました。", "ok");
+            })
+            .catch(err => {
+                console.error(err);
+                setStatus("STL 生成中にエラーが発生しました。", "error");
+            });
+    }
+</script>
 </body>
 </html>
