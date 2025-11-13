@@ -113,9 +113,19 @@ def build_solid_stl(lons, lats, Z, z_scale_visual):
             vertices[idx] = [x, y, z]
 
     # 土台の高さ
+    # z 軸スケール適用
+    Z_scaled = Z * z_scale_for_stl
+
+    # --- 土台の設定（ここを修正） ---
+    # 地形の高低差を計算
+    relief = Z_scaled.max() - Z_scaled.min()
+
+    # 高低差の 1/10 を目安にしつつ、最低 500 m は確保
+    base_thickness = max(relief * 0.1, 500.0)
+
     min_z_surface = Z_scaled.min()
-    base_thickness = 100.0
-    bottom_z = min_z_surface - base_thickness
+    bottom_z_level = min_z_surface - base_thickness
+
 
     # 底面頂点
     for i in range(rows):
