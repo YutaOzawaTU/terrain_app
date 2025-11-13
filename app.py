@@ -73,33 +73,49 @@ def process_nc(file_storage, max_n=800):
 
     return lons_sub.tolist(), lats_sub.tolist(), Z_sub.tolist()
 
-
 def build_solid_stl(lons, lats, Z, z_scale_visual):
     """
-    lon/lat/Z から土台付き STL を作る関数（例）。
-    関数のシグネチャはあなたの app.py に合わせてください。
+    lon/lat/Z（Python の list か np.array）から、
+    土台付きの STL メッシュを生成して返す。
+    z_scale_visual は画面で使っている Z スケール。
+    STL では内部的に 10 倍してサイズ感を合わせる。
     """
 
-    # --- ここから上は今のコードに合わせて OK ---
+    # numpy 配列に変換
+    lons = np.array(lons)
+    lats = np.array(lats)
+    Z = np.array(Z)
 
-    rows, cols = Z.shape
+    # --- 座標変換の準備 ---
+    # 地理座標 → メートル換算
+    avg_lat_rad = np.deg2rad(lats.mean())
+    meters_per_degree_lat = 111_320.0
+    meters_per_degree_lon = 111_320.0 * np.cos(avg_lat_rad)
 
-    # ① まず Z をスケーリング（STL 用に 10 倍など）
+    lon_origin = lons.min()
+    lat_origin = lats.min()
+
+    # --- Z 軸スケール適用 ---
+    # 画面用スケールを 10 倍して STL 用にする
     z_scale_for_stl = float(z_scale_visual) * 10.0
     Z_scaled = Z * z_scale_for_stl
 
-    # ② 土台の設定：高低差を元に厚さを決める
+    rows, cols = Z_scaled.shape
+
+    # --- 土台の設定 ---
+    # 地形の高低差を計算
     relief = Z_scaled.max() - Z_scaled.min()
-    base_thickness = max(relief * 0.1, 500.0)   # ← ここが新ロジック
+    # 高低差の 1/10 を目安にしつつ、最低 500 m は確保
+    base_thickness = max(relief * 0.1, 500.0)
     min_z_surface = Z_scaled.min()
     bottom_z_level = min_z_surface - base_thickness
 
-    # ③ 頂点配列を用意
+    # --- 頂点の作成 ---
     num_top_vertices = rows * cols
-    total_vertices = num_top_vertices * 2
+    total_vertices = num_top_vertices * 2  # 表面 + 底面
     vertices = np.zeros((total_vertices, 3), dtype=np.float64)
 
-    # ④ 表面頂点（ここで Z_scaled を使う）
+    # 表面頂点
     for i in range(rows):
         for j in range(cols):
             idx = i * cols + j
@@ -108,7 +124,7 @@ def build_solid_stl(lons, lats, Z, z_scale_visual):
             z = Z_scaled[i, j]
             vertices[idx] = [x, y, z]
 
-    # ⑤ 底面頂点（bottom_z_level を使用）
+    # 底面頂点
     for i in range(rows):
         for j in range(cols):
             idx_top = i * cols + j
@@ -119,23 +135,23 @@ def build_solid_stl(lons, lats, Z, z_scale_visual):
                 bottom_z_level,
             ]
 
-
+    # --- 面の作成 ---
     def top(i, j):
         return i * cols + j
 
     def bottom(i, j):
-        return num_top + i * cols + j
+        return num_top_vertices + i * cols + j  # ← num_top_vertices を使用
 
     faces = []
 
-    # 表面
+    # 1. 表面
     for i in range(rows - 1):
         for j in range(cols - 1):
             v0, v1, v2, v3 = top(i, j), top(i, j + 1), top(i + 1, j), top(i + 1, j + 1)
             faces.append([v0, v1, v3])
             faces.append([v0, v3, v2])
 
-    # 側面（上端）
+    # 2. 側面（上端）
     for j in range(cols - 1):
         faces.append([top(0, j), bottom(0, j), bottom(0, j + 1)])
         faces.append([top(0, j), bottom(0, j + 1), top(0, j + 1)])
@@ -163,7 +179,7 @@ def build_solid_stl(lons, lats, Z, z_scale_visual):
             [top(i, cols - 1), bottom(i + 1, cols - 1), bottom(i, cols - 1)]
         )
 
-    # 底面
+    # 3. 底面
     for i in range(rows - 1):
         for j in range(cols - 1):
             v0, v1, v2, v3 = (
@@ -177,12 +193,15 @@ def build_solid_stl(lons, lats, Z, z_scale_visual):
 
     faces = np.array(faces, dtype=np.int64)
 
+    # --- STL メッシュオブジェクト生成 ---
     terrain_mesh = mesh.Mesh(np.zeros(faces.shape[0], dtype=mesh.Mesh.dtype))
     for i, f in enumerate(faces):
         for j in range(3):
             terrain_mesh.vectors[i][j] = vertices[f[j], :]
 
     return terrain_mesh
+
+
 
 
 # --- Routes -------------------------------------------------------------
