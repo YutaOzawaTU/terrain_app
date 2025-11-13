@@ -76,34 +76,30 @@ def process_nc(file_storage, max_n=800):
 
 def build_solid_stl(lons, lats, Z, z_scale_visual):
     """
-    lon/lat/Z（Python の list か np.array）から、
-    土台付きの STL メッシュを生成して返す。
-    z_scale_visual は画面で使っている Z スケール。
-    STL では内部的に 10 倍してサイズ感を合わせる。
+    lon/lat/Z から土台付き STL を作る関数（例）。
+    関数のシグネチャはあなたの app.py に合わせてください。
     """
-    lons = np.array(lons)
-    lats = np.array(lats)
-    Z = np.array(Z)
 
-    # STL 用 Z スケール（見かけの 10 倍）
-    z_scale = float(z_scale_visual) * 10.0
-    Z_scaled = Z * z_scale
+    # --- ここから上は今のコードに合わせて OK ---
 
-    # 地理座標 → メートル換算
-    avg_lat_rad = np.deg2rad(lats.mean())
-    meters_per_degree_lat = 111_320.0
-    meters_per_degree_lon = 111_320.0 * np.cos(avg_lat_rad)
+    rows, cols = Z.shape
 
-    lon_origin = lons.min()
-    lat_origin = lats.min()
+    # ① まず Z をスケーリング（STL 用に 10 倍など）
+    z_scale_for_stl = float(z_scale_visual) * 10.0
+    Z_scaled = Z * z_scale_for_stl
 
-    rows, cols = Z_scaled.shape
+    # ② 土台の設定：高低差を元に厚さを決める
+    relief = Z_scaled.max() - Z_scaled.min()
+    base_thickness = max(relief * 0.1, 500.0)   # ← ここが新ロジック
+    min_z_surface = Z_scaled.min()
+    bottom_z_level = min_z_surface - base_thickness
 
-    num_top = rows * cols
-    total_vertices = num_top * 2  # 表面 + 底面
+    # ③ 頂点配列を用意
+    num_top_vertices = rows * cols
+    total_vertices = num_top_vertices * 2
     vertices = np.zeros((total_vertices, 3), dtype=np.float64)
 
-    # 表面頂点
+    # ④ 表面頂点（ここで Z_scaled を使う）
     for i in range(rows):
         for j in range(cols):
             idx = i * cols + j
@@ -112,31 +108,18 @@ def build_solid_stl(lons, lats, Z, z_scale_visual):
             z = Z_scaled[i, j]
             vertices[idx] = [x, y, z]
 
-    # 土台の高さ
-    # z 軸スケール適用
-    Z_scaled = Z * z_scale_for_stl
-
-    # --- 土台の設定（ここを修正） ---
-    # 地形の高低差を計算
-    relief = Z_scaled.max() - Z_scaled.min()
-
-    # 高低差の 1/10 を目安にしつつ、最低 500 m は確保
-    base_thickness = max(relief * 0.1, 500.0)
-
-    min_z_surface = Z_scaled.min()
-    bottom_z_level = min_z_surface - base_thickness
-
-
-    # 底面頂点
+    # ⑤ 底面頂点（bottom_z_level を使用）
     for i in range(rows):
         for j in range(cols):
             idx_top = i * cols + j
-            idx_bottom = num_top + idx_top
+            idx_bottom = num_top_vertices + idx_top
             vertices[idx_bottom] = [
                 vertices[idx_top, 0],
                 vertices[idx_top, 1],
-                bottom_z,
+                bottom_z_level,
             ]
+
+
 
     def top(i, j):
         return i * cols + j
