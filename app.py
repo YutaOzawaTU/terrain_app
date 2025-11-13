@@ -1,5 +1,4 @@
 import os
-import io
 import tempfile
 
 import numpy as np
@@ -73,6 +72,7 @@ def process_nc(file_storage, max_n=800):
 
     return lons_sub.tolist(), lats_sub.tolist(), Z_sub.tolist()
 
+
 def build_solid_stl(lons, lats, Z, z_scale_visual):
     """
     lon/lat/Z（Python の list か np.array）から、
@@ -140,7 +140,7 @@ def build_solid_stl(lons, lats, Z, z_scale_visual):
         return i * cols + j
 
     def bottom(i, j):
-        return num_top_vertices + i * cols + j  # ← num_top_vertices を使用
+        return num_top_vertices + i * cols + j
 
     faces = []
 
@@ -202,8 +202,6 @@ def build_solid_stl(lons, lats, Z, z_scale_visual):
     return terrain_mesh
 
 
-
-
 # --- Routes -------------------------------------------------------------
 @app.route("/")
 def index():
@@ -223,7 +221,7 @@ def upload_nc():
     try:
         lons, lats, Z = process_nc(file)
     except Exception as e:
-        # エラー内容をログにも返答にも出す（開発用）
+        # エラー内容を返す（開発用）
         return jsonify({"error": f"nc ファイル処理中にエラー: {e}"}), 500
 
     return jsonify({"lons": lons, "lats": lats, "Z": Z})
