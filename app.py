@@ -120,7 +120,6 @@ def build_solid_stl(lons, lats, Z, z_scale_visual):
             ]
 
 
-
     def top(i, j):
         return i * cols + j
 
