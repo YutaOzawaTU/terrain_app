@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>3D Terrain Viewer</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+</head>
+<body>
+<h1>3D 地形可視化 & STL 生成ツール</h1>
+
+<input type="file" id="ncfile">
+<button onclick="upload()">アップロードして表示</button>
+
+<br><br>
+Zスケール: <input type="number" id="zscale" value="1" step="0.1">
+<button onclick="updateZ()">更新</button>
+
+<div id="plot" style="width:100%;height:600px;"></div>
+
+<button onclick="downloadSTL()">STLをダウンロード</button>
+
+<script>
+let LONS, LATS, Z;
+let currentZ = 1;
+
+function upload() {
+    const file = document.getElementById("ncfile").files[0];
+    const form = new FormData();
+    form.append("ncfile", file);
+
+    fetch("/api/upload_nc", { method:"POST", body:form })
+        .then(r => r.json())
+        .then(data => {
+            LONS = data.lons;
+            LATS = data.lats;
+            Z = data.Z;
+            draw();
+        });
+}
+
+function draw() {
+    const fig = {
+        data:[{
+            type:"surface",
+            x:LONS,
+            y:LATS,
+            z:Z,
+            colorscale:"Viridis"
+        }],
+        layout:{
+            title:"3D Terrain",
+            scene:{
+                aspectratio:{x:1, y:1, z:currentZ}
+            }
+        }
+    };
+    Plotly.newPlot("plot", fig);
+}
+
+function updateZ() {
+    currentZ = parseFloat(document.getElementById("zscale").value);
+    draw();
+}
+
+function downloadSTL() {
+    fetch("/api/export_stl", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+            lons:LONS,
+            lats:LATS,
+            Z:Z,
+            z_scale:currentZ
+        })
+    }).then(resp => resp.blob())
+      .then(blob => {
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "terrain.stl";
+          a.click();
+          URL.revokeObjectURL(url);
+      });
+}
+</script>
+
+</body>
+</html>
